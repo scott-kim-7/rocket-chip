@@ -13,61 +13,61 @@ import freechips.rocketchip.formal._
 
 case class TLMonitorArgs(edge: TLEdge)
 
-abstract class TLMonitorBase(args: TLMonitorArgs) extends Module
+	abstract class TLMonitorBase(args: TLMonitorArgs) extends Module
 {
-  val io = IO(new Bundle {
-    val in = Input(new TLBundle(args.edge.bundle))
-  })
+	val io = IO(new Bundle {
+			val in = Input(new TLBundle(args.edge.bundle))
+			})
 
-  def legalize(bundle: TLBundle, edge: TLEdge, reset: Reset): Unit
-  legalize(io.in, args.edge, reset)
+	def legalize(bundle: TLBundle, edge: TLEdge, reset: Reset): Unit
+								    legalize(io.in, args.edge, reset)
 }
 
 object TLMonitor {
-  def apply(enable: Boolean, node: TLNode)(implicit p: Parameters): TLNode = {
-    if (enable) {
-      EnableMonitors { implicit p => node := TLEphemeralNode()(ValName("monitor")) }
-    } else { node }
-  }
+	def apply(enable: Boolean, node: TLNode)(implicit p: Parameters): TLNode = {
+		if (enable) {
+			EnableMonitors { implicit p => node := TLEphemeralNode()(ValName("monitor")) }
+		} else { node }
+	}
 }
 
-@chiselName
+	@chiselName
 class TLMonitor(args: TLMonitorArgs, monitorDir: MonitorDirection = MonitorDirection.Monitor) extends TLMonitorBase(args)
 {
-  require (args.edge.params(TLMonitorStrictMode) || (! args.edge.params(TestplanTestType).formal))
+	require (args.edge.params(TLMonitorStrictMode) || (! args.edge.params(TestplanTestType).formal))
 
-  val cover_prop_class = PropertyClass.Default
+		val cover_prop_class = PropertyClass.Default
 
-  //Like assert but can flip to being an assumption for formal verification
-  def monAssert(cond: Bool, message: String): Unit =
-  if (monitorDir == MonitorDirection.Monitor) {
-    assert(cond, message)
-  } else {
-    Property(monitorDir, cond, message, PropertyClass.Default)
-  }
+		//Like assert but can flip to being an assumption for formal verification
+		def monAssert(cond: Bool, message: String): Unit =
+							    if (monitorDir == MonitorDirection.Monitor) {
+								    assert(cond, message)
+							    } else {
+								    Property(monitorDir, cond, message, PropertyClass.Default)
+							    }
 
-  def assume(cond: Bool, message: String): Unit =
-  if (monitorDir == MonitorDirection.Monitor) {
-    assert(cond, message)
-  } else {
-    Property(monitorDir.flip, cond, message, PropertyClass.Default)
-  }
+	def assume(cond: Bool, message: String): Unit =
+						 if (monitorDir == MonitorDirection.Monitor) {
+							 assert(cond, message)
+						 } else {
+							 Property(monitorDir.flip, cond, message, PropertyClass.Default)
+						 }
 
-  def extra = {
-    args.edge.sourceInfo match {
-      case SourceLine(filename, line, col) => s" (connected at $filename:$line:$col)"
-      case _ => ""
-    }
-  }
+	def extra = {
+		args.edge.sourceInfo match {
+			case SourceLine(filename, line, col) => s" (connected at $filename:$line:$col)"
+			case _ => ""
+		}
+	}
 
-  def visible(address: UInt, source: UInt, edge: TLEdge) =
-    edge.client.clients.map { c =>
-      !c.sourceId.contains(source) ||
-      c.visibility.map(_.contains(address)).reduce(_ || _)
-    }.reduce(_ && _)
+	def visible(address: UInt, source: UInt, edge: TLEdge) =
+		edge.client.clients.map { c =>
+			!c.sourceId.contains(source) ||
+				c.visibility.map(_.contains(address)).reduce(_ || _)
+		}.reduce(_ && _)
 
-  def legalizeFormatA(bundle: TLBundleA, edge: TLEdge) {
-    //switch this flag to turn on diplomacy in error messages
+	def legalizeFormatA(bundle: TLBundleA, edge: TLEdge) {
+		//switch this flag to turn on diplomacy in error messages
     def diplomacyInfo = if (true) "" else "\nThe diplomacy information for the edge is as follows:\n" + edge.formatEdge + "\n"
     monAssert (TLMessages.isA(bundle.opcode), "'A' channel has invalid opcode" + extra)
 
@@ -146,7 +146,8 @@ class TLMonitor(args: TLMonitorArgs, monitorDir: MonitorDirection = MonitorDirec
     }
 
     when (bundle.opcode === TLMessages.Hint) {
-      monAssert (edge.expectsVipCheckerMasterToSlaveHint(bundle.source, edge.address(bundle), bundle.size), "'A' channel carries Hint type which is unexpected using diplomatic parameters" + extra)
+      monAssert (edge.master.expectsVipCheckerEmitsHint(bundle.source, bundle.size), "'A' channel carries Hint type which master claims it can't emit" + diplomacyInfo + extra)
+      monAssert (edge.slave.expectsVipCheckerSupportsHint(edge.address(bundle), bundle.size, None), "'A' channel carries Hint type which slave claims it can't support" + diplomacyInfo + extra)
       monAssert (source_ok, "'A' channel Hint carries invalid source ID" + diplomacyInfo + extra)
       monAssert (is_aligned, "'A' channel Hint address not aligned to size" + extra)
       monAssert (TLHints.isHints(bundle.param), "'A' channel Hint carries invalid opcode param" + extra)
